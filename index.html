@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Detection and YouTube Video</title>
+    <style>
+        body { margin: 0; }
+        #qr-canvas { display: none; } /* Hide the canvas as it's only for processing */
+        #video-container {
+            width: 100%;
+            height: 100vh; /* Full viewport height */
+            display: none; /* Initially hide the video container */
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: black; /* Add background color to hide empty space */
+        }
+        #video-container iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- QR Code Detection Canvas (hidden) -->
+    <canvas id="qr-canvas"></canvas>
+    <!-- Container for displaying the YouTube video -->
+    <div id="video-container"></div>
+
+    <!-- Load Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Load jsQR library -->
+    <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+    <!-- Custom Script -->
+    <script>
+        let scene, camera, renderer;
+        let video, qrCanvas, context, videoContainer;
+
+        // Initialize the scene
+        function init() {
+            // Set up the camera, scene, and renderer
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Set up video for QR code detection
+            video = document.createElement('video');
+            qrCanvas = document.getElementById('qr-canvas');
+            context = qrCanvas.getContext('2d');
+            videoContainer = document.getElementById('video-container');
+
+            // Request access to the camera
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then((stream) => {
+                    video.srcObject = stream;
+                    video.setAttribute('playsinline', true);
+                    video.play();
+                    requestAnimationFrame(scanQRCode);
+                })
+                .catch((err) => console.error('Error accessing camera: ', err));
+
+            // Start rendering
+            animate();
+        }
+
+        // Function to render the scene
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Render the scene
+            renderer.render(scene, camera);
+
+            // Update camera position based on video feed (for AR effect)
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                const videoAspect = video.videoWidth / video.videoHeight;
+                const screenAspect = window.innerWidth / window.innerHeight;
+                camera.aspect = screenAspect;
+                camera.updateProjectionMatrix();
+            }
+        }
+
+        // Function to scan QR codes
+        function scanQRCode() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                qrCanvas.width = video.videoWidth;
+                qrCanvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, qrCanvas.width, qrCanvas.height);
+
+                const imageData = context.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
+                const code = jsQR(imageData.data, qrCanvas.width, qrCanvas.height);
+
+                if (code) {
+                    console.log('QR Code Data:', code.data);
+                    // Display YouTube video if QR code contains a valid YouTube video URL
+                    const videoUrl = code.data;
+                    if (videoUrl.startsWith('https://www.youtube.com/watch?v=')) {
+                        // const videoId = new URL(videoUrl).searchParams.get('v');
+                        const iframe = document.createElement('iframe');
+                        iframe.src = videoUrl+'&autoplay=1';
+                        iframe.width = '100%';
+                        iframe.height = '100%';
+                        iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+                        iframe.allowFullscreen = true;
+                     
+                        // Clear previous video
+                        videoContainer.innerHTML = '';
+                        videoContainer.appendChild(iframe);
+
+                        videoContainer.style.display = 'block'; // Show the video container
+                    } else {
+                        videoContainer.style.display = 'none'; // Hide the video container if not a YouTube URL
+                    }
+                } else {
+                    videoContainer.style.display = 'none'; // Hide the video container if no QR code detected
+                }
+            }
+            requestAnimationFrame(scanQRCode);
+        }
+
+        // Start the app
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
